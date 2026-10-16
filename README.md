@@ -6,7 +6,9 @@
 
 ## 試用
 
-開 `index.html`，或 GitHub Pages 連結（見 repo About）。
+- 即時試用：[raw.githack demo](https://raw.githack.com/siupingala/roadster-glow-demo/main/index.html)
+- GitHub Pages（workflow 部署後）：https://siupingala.github.io/roadster-glow-demo/
+- Repo：https://github.com/siupingala/roadster-glow-demo
 
 ## 操作
 

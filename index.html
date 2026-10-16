@@ -100,7 +100,7 @@
       <button type="button" id="btnMute" aria-pressed="true">聲效</button>
       <button type="button" id="btnReset">重置</button>
     </div>
-    <p class="tip">Drag to bank · W/S speed · Concept demo</p>
+    <p class="tip">Tilt phone / drag · larger bank · Concept demo</p>
   </div>
 
   <div id="status">鏡頭未開</div>
@@ -130,7 +130,7 @@
     renderer.setSize(innerWidth, innerHeight);
     renderer.setClearColor(0x000000, 0);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.35;
 
     const scene = new THREE.Scene();
     scene.background = null;
@@ -138,13 +138,19 @@
     const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200);
     camera.position.set(0, 2.2, 6.6);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+    const key = new THREE.DirectionalLight(0xffffff, 1.85);
     key.position.set(4, 8, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.45);
+    const fill = new THREE.DirectionalLight(0xfff5e8, 0.9);
+    fill.position.set(-3, 5, 4);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xaaccff, 0.7);
     rim.position.set(-6, 3, -4);
     scene.add(rim);
+    const groundBounce = new THREE.DirectionalLight(0xffffff, 0.45);
+    groundBounce.position.set(0, -4, 2);
+    scene.add(groundBounce);
 
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1.28, 32),
@@ -158,14 +164,14 @@
     car.scale.set(0.8, 0.8, 0.8);
     scene.add(car);
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd5dae0, metalness: 0.95, roughness: 0.18 });
-    const bodyDark = new THREE.MeshStandardMaterial({ color: 0xb8bec6, metalness: 0.92, roughness: 0.22 });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f7, metalness: 0.72, roughness: 0.28, envMapIntensity: 1.2 });
+    const bodyDark = new THREE.MeshStandardMaterial({ color: 0xe4e8ee, metalness: 0.65, roughness: 0.32 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x0c0c10, metalness: 0.85, roughness: 0.35 });
     const carbonMat = new THREE.MeshStandardMaterial({ color: 0x15151a, metalness: 0.6, roughness: 0.55 });
     const glassMat = new THREE.MeshStandardMaterial({
       color: 0x1c2833, metalness: 0.95, roughness: 0.05, transparent: true, opacity: 0.72
     });
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xcfd5dc, metalness: 1, roughness: 0.12 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.9, roughness: 0.2 });
 
     function latheShape(points, mat, openEnded = false) {
       const geo = new THREE.LatheGeometry(points, 32);
@@ -258,35 +264,36 @@
     plate.position.set(0, 0.42, -2.18);
     car.add(plate);
 
-    // Wheels — thin multi-spoke look
+    // Wheels — true round cylinders (tire + rim + spokes)
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, metalness: 0.15, roughness: 0.85 });
     function makeWheel(x, z) {
       const group = new THREE.Group();
-      const tire = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.09, 12, 24), darkMat);
-      tire.rotation.y = Math.PI / 2;
+      // tire wall: cylinder along X so the circular face is visible from the side
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.22, 32), tireMat);
+      tire.rotation.z = Math.PI / 2;
       group.add(tire);
-      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 20), chromeMat);
+      const sidewall = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.24, 32), tireMat);
+      sidewall.rotation.z = Math.PI / 2;
+      group.add(sidewall);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.12, 32), chromeMat);
       rim.rotation.z = Math.PI / 2;
       group.add(rim);
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.14, 16), chromeMat);
+      hub.rotation.z = Math.PI / 2;
+      group.add(hub);
       for (let i = 0; i < 6; i++) {
-        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.03), chromeMat);
-        spoke.rotation.z = (i / 6) * Math.PI;
+        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.22, 0.04), chromeMat);
+        const a = (i / 6) * Math.PI * 2;
+        spoke.position.set(0, Math.cos(a) * 0.12, Math.sin(a) * 0.12);
+        spoke.rotation.x = a;
         group.add(spoke);
       }
-      group.position.set(x, 0.34, z);
+      group.position.set(x, 0.36, z);
       car.add(group);
       return group;
     }
     makeWheel(-0.92, 1.25); makeWheel(0.92, 1.25);
     makeWheel(-0.92, -1.3); makeWheel(0.92, -1.3);
-
-    // Wheel arch lips
-    [[-0.95, 1.25], [0.95, 1.25], [-0.95, -1.3], [0.95, -1.3]].forEach(([x, z]) => {
-      const arch = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.035, 8, 16, Math.PI), bodyDark);
-      arch.rotation.y = Math.PI / 2;
-      arch.rotation.z = x > 0 ? -Math.PI / 2 : Math.PI / 2;
-      arch.position.set(x, 0.42, z);
-      car.add(arch);
-    });
 
     function makeLightMesh(w, h, d, color) {
       const mat = new THREE.MeshStandardMaterial({
@@ -497,7 +504,7 @@
     const btnReset = document.getElementById('btnReset');
     setBtn(btnMute, true);
 
-    btnStart.onclick = async () => { audio.unlock(); try { await startCamera('environment'); } catch (err) { setStatus('開鏡頭失敗：' + (err.message || err)); } };
+    btnStart.onclick = async () => { audio.unlock(); await armGyro(); try { await startCamera('environment'); } catch (err) { setStatus('開鏡頭失敗：' + (err.message || err)); } };
     btnCam.onclick = async () => {
       audio.unlock();
       try { if (state.camOn) stopCamera(); else await startCamera(state.facingMode || 'environment'); }
@@ -534,13 +541,52 @@
     addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
     addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
     let dragging = false, lastX = 0;
-    canvas.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; canvas.setPointerCapture(e.pointerId); audio.unlock(); });
+    canvas.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; canvas.setPointerCapture(e.pointerId); audio.unlock(); armGyro(); });
     canvas.addEventListener('pointerup', () => { dragging = false; state.steer *= 0.3; });
     canvas.addEventListener('pointermove', e => {
       if (!dragging) return;
       const dx = e.clientX - lastX; lastX = e.clientX;
-      state.steer = THREE.MathUtils.clamp(state.steer + dx * 0.004, -1, 1);
+      state.steer = THREE.MathUtils.clamp(state.steer + dx * 0.012, -1, 1);
     });
+
+    // Phone tilt → steer (larger amplitude)
+    state.gyroSteer = 0;
+    state.gyroActive = false;
+    function onOrient(e) {
+      // gamma: left/right tilt while portrait (−90..90)
+      let g = e.gamma;
+      if (g == null) return;
+      // landscape fallback: use beta
+      if (Math.abs(window.orientation || 0) === 90 || Math.abs(screen.orientation?.angle || 0) === 90) {
+        g = e.beta;
+      }
+      // map ±35° → ±1, clamp, amplify
+      state.gyroSteer = THREE.MathUtils.clamp((g || 0) / 28, -1, 1);
+      state.gyroActive = true;
+    }
+    async function enableGyro() {
+      try {
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+          const p = await DeviceOrientationEvent.requestPermission();
+          if (p !== 'granted') { setStatus('未授權運動感應'); return false; }
+        }
+        window.addEventListener('deviceorientation', onOrient, true);
+        setStatus((statusEl.textContent || '') + ' · 傾斜轉向已開');
+        return true;
+      } catch (_) {
+        setStatus('此機唔支援傾斜轉向');
+        return false;
+      }
+    }
+    // ask on first camera start / first canvas tap
+    let gyroReady = false;
+    const armGyro = async () => {
+      if (gyroReady) return;
+      gyroReady = true;
+      await enableGyro();
+    };
+
 
     function setEmissive(mesh, intensity) { mesh.userData.mat.emissiveIntensity = intensity; }
 
@@ -550,16 +596,18 @@
       const dt = Math.min(clock.getDelta(), 0.05);
       state.blink += dt;
 
-      if (keys['arrowleft'] || keys['a']) state.steer = Math.max(state.steer - 1.8 * dt, -1);
-      else if (keys['arrowright'] || keys['d']) state.steer = Math.min(state.steer + 1.8 * dt, 1);
-      else if (!dragging) state.steer *= Math.pow(0.08, dt);
+      if (keys['arrowleft'] || keys['a']) state.steer = Math.max(state.steer - 2.4 * dt, -1);
+      else if (keys['arrowright'] || keys['d']) state.steer = Math.min(state.steer + 2.4 * dt, 1);
+      else if (dragging) { /* finger drag wins */ }
+      else if (state.gyroActive) state.steer = THREE.MathUtils.damp(state.steer, state.gyroSteer * 1.35, 10, dt);
+      else state.steer *= Math.pow(0.08, dt);
 
       if (keys['arrowup'] || keys['w']) state.speed = Math.min(state.speed + 4.5 * dt, 8);
       if (keys['arrowdown'] || keys['s'] || state.brake) state.speed = Math.max(state.speed - (state.brake ? 7 : 3.5) * dt, -2);
       else { state.speed *= Math.pow(0.35, dt); if (Math.abs(state.speed) < 0.02) state.speed = 0; }
 
       state.steerSmooth = THREE.MathUtils.damp(state.steerSmooth, state.steer, 4.5, dt);
-      state.bank = THREE.MathUtils.damp(state.bank, -state.steerSmooth * 0.28, 3.2, dt);
+      state.bank = THREE.MathUtils.damp(state.bank, -state.steerSmooth * 0.55, 3.8, dt);
       state.yaw += -state.steerSmooth * state.speed * 0.35 * dt;
       state.height = THREE.MathUtils.damp(state.height, state.fly ? 1.4 : 0, 2.2, dt);
 

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Roadster Glow Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; font-family: system-ui, -apple-system, sans-serif; color: #eee; }
+    #c { display: block; width: 100%; height: 100%; touch-action: none; }
+    .hud {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+      padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+      background: linear-gradient(transparent, rgba(0,0,0,.72));
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    button {
+      appearance: none; border: 1px solid rgba(255,255,255,.18);
+      background: rgba(20,20,24,.85); color: #f2f2f2;
+      border-radius: 999px; padding: 10px 14px; font-size: 13px;
+      backdrop-filter: blur(8px); cursor: pointer; min-width: 72px;
+      transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+    button.on {
+      border-color: rgba(255, 214, 120, .85);
+      box-shadow: 0 0 16px rgba(255, 180, 60, .35);
+      background: rgba(60, 42, 12, .9);
+    }
+    button.brake.on {
+      border-color: rgba(255, 70, 70, .9);
+      box-shadow: 0 0 16px rgba(255, 40, 40, .4);
+      background: rgba(70, 12, 12, .92);
+    }
+    button.thrust.on {
+      border-color: rgba(140, 210, 255, .95);
+      box-shadow: 0 0 18px rgba(80, 180, 255, .45);
+      background: rgba(10, 40, 70, .92);
+    }
+    .tip {
+      text-align: center; font-size: 11px; opacity: .65; line-height: 1.4;
+    }
+    .badge {
+      position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 12px;
+      font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+      opacity: .7; z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div class="badge">Roadster Glow · demo</div>
+  <canvas id="c"></canvas>
+  <div class="hud">
+    <div class="row">
+      <button type="button" id="btnHead" aria-pressed="false">頭燈</button>
+      <button type="button" id="btnBrake" class="brake" aria-pressed="false">煞車燈</button>
+      <button type="button" id="btnL" aria-pressed="false">← 轉燈</button>
+      <button type="button" id="btnR" aria-pressed="false">轉燈 →</button>
+    </div>
+    <div class="row">
+      <button type="button" id="btnThrust" class="thrust" aria-pressed="false">Thruster</button>
+      <button type="button" id="btnFly" class="thrust" aria-pressed="false">起飛</button>
+      <button type="button" id="btnReset">重置</button>
+    </div>
+    <p class="tip">拖曳／左右鍵轉彎（車身會慢斜）· 上下鍵加減 · 概念 demo，非官方 Tesla 產品</p>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x07070c);
+    scene.fog = new THREE.FogExp2(0x07070c, 0.035);
+
+    const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200);
+    camera.position.set(0, 2.4, 7.2);
+
+    scene.add(new THREE.AmbientLight(0x8899bb, 0.35));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(4, 8, 6);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x88aaff, 0.55);
+    rim.position.set(-6, 3, -4);
+    scene.add(rim);
+
+    // ground strip (HK-ish night asphalt vibe)
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(80, 80),
+      new THREE.MeshStandardMaterial({ color: 0x15151c, roughness: 0.85, roughnessMap: null, metalness: 0.2 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    scene.add(ground);
+
+    const lane = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.6, 60),
+      new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.22 })
+    );
+    lane.rotation.x = -Math.PI / 2;
+    lane.position.set(0, 0.01, -8);
+    scene.add(lane);
+
+    // stylized Roadster group
+    const car = new THREE.Group();
+    scene.add(car);
+
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0xc8cdd4, metalness: 0.92, roughness: 0.22
+    });
+    const darkMat = new THREE.MeshStandardMaterial({
+      color: 0x111114, metalness: 0.7, roughness: 0.4
+    });
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x1a222c, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.75
+    });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.42, 4.2), bodyMat);
+    body.position.y = 0.55;
+    body.scale.set(1, 1, 1);
+    car.add(body);
+
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.32, 1.1), bodyMat);
+    nose.position.set(0, 0.48, 2.35);
+    car.add(nose);
+
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.38, 1.6), glassMat);
+    cabin.position.set(0, 0.88, 0.15);
+    car.add(cabin);
+
+    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.06, 0.35), darkMat);
+    spoiler.position.set(0, 0.95, -1.85);
+    car.add(spoiler);
+
+    const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 0.45), darkMat);
+    diffuser.position.set(0, 0.28, -2.15);
+    car.add(diffuser);
+
+    // wheels
+    function wheel(x, z) {
+      const w = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.38, 0.38, 0.22, 24),
+        darkMat
+      );
+      w.rotation.z = Math.PI / 2;
+      w.position.set(x, 0.38, z);
+      car.add(w);
+    }
+    wheel(-0.95, 1.35); wheel(0.95, 1.35);
+    wheel(-0.95, -1.35); wheel(0.95, -1.35);
+
+    // lights
+    function makeLightMesh(w, h, d, color, intensity = 2) {
+      const mat = new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 0, metalness: 0.2, roughness: 0.4
+      });
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.userData.mat = mat;
+      return m;
+    }
+
+    const headL = makeLightMesh(0.28, 0.1, 0.08, 0xfff2cc);
+    headL.position.set(-0.55, 0.52, 2.88);
+    const headR = makeLightMesh(0.28, 0.1, 0.08, 0xfff2cc);
+    headR.position.set(0.55, 0.52, 2.88);
+    car.add(headL, headR);
+
+    const spotL = new THREE.SpotLight(0xfff1c8, 0, 18, Math.PI / 7, 0.45, 1);
+    spotL.position.set(-0.55, 0.55, 2.9);
+    spotL.target.position.set(-0.55, 0.2, 8);
+    car.add(spotL, spotL.target);
+    const spotR = new THREE.SpotLight(0xfff1c8, 0, 18, Math.PI / 7, 0.45, 1);
+    spotR.position.set(0.55, 0.55, 2.9);
+    spotR.target.position.set(0.55, 0.2, 8);
+    car.add(spotR, spotR.target);
+
+    // continuous red rear bar
+    const tailBar = makeLightMesh(1.7, 0.05, 0.06, 0xff2a2a);
+    tailBar.position.set(0, 0.72, -2.12);
+    car.add(tailBar);
+
+    const brakeL = makeLightMesh(0.25, 0.12, 0.06, 0xff1a1a);
+    brakeL.position.set(-0.7, 0.55, -2.12);
+    const brakeR = makeLightMesh(0.25, 0.12, 0.06, 0xff1a1a);
+    brakeR.position.set(0.7, 0.55, -2.12);
+    car.add(brakeL, brakeR);
+
+    const turnFL = makeLightMesh(0.16, 0.08, 0.06, 0xffaa33);
+    turnFL.position.set(-0.92, 0.52, 2.7);
+    const turnFR = makeLightMesh(0.16, 0.08, 0.06, 0xffaa33);
+    turnFR.position.set(0.92, 0.52, 2.7);
+    const turnRL = makeLightMesh(0.16, 0.08, 0.06, 0xffaa33);
+    turnRL.position.set(-0.95, 0.62, -2.05);
+    const turnRR = makeLightMesh(0.16, 0.08, 0.06, 0xffaa33);
+    turnRR.position.set(0.95, 0.62, -2.05);
+    car.add(turnFL, turnFR, turnRL, turnRR);
+
+    // thrusters
+    const thrusters = [];
+    const thrustLights = [];
+    [-0.45, -0.15, 0.15, 0.45].forEach((x, i) => {
+      const nozzle = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09, 0.12, 0.28, 16),
+        darkMat
+      );
+      nozzle.rotation.x = Math.PI / 2;
+      nozzle.position.set(x, 0.32, -2.35);
+      car.add(nozzle);
+
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x9ad8ff, transparent: true, opacity: 0 })
+      );
+      glow.position.set(x, 0.32, -2.55);
+      car.add(glow);
+
+      const plume = new THREE.Mesh(
+        new THREE.ConeGeometry(0.12, 0.9, 16, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xb8e7ff, transparent: true, opacity: 0, side: THREE.DoubleSide })
+      );
+      plume.rotation.x = Math.PI;
+      plume.position.set(x, 0.32, -2.95);
+      car.add(plume);
+
+      const pLight = new THREE.PointLight(0x8ecfff, 0, 4, 2);
+      pLight.position.set(x, 0.35, -2.6);
+      car.add(pLight);
+
+      thrusters.push({ glow, plume, pLight });
+      thrustLights.push(pLight);
+    });
+
+    // state
+    const state = {
+      headlights: false,
+      brake: false,
+      turnL: false,
+      turnR: false,
+      thrust: false,
+      fly: false,
+      steer: 0,       // -1..1 desired
+      steerSmooth: 0,
+      speed: 0,
+      yaw: 0,
+      bank: 0,
+      height: 0,
+      blink: 0,
+    };
+
+    function setBtn(el, on) {
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
+    const btnHead = document.getElementById('btnHead');
+    const btnBrake = document.getElementById('btnBrake');
+    const btnL = document.getElementById('btnL');
+    const btnR = document.getElementById('btnR');
+    const btnThrust = document.getElementById('btnThrust');
+    const btnFly = document.getElementById('btnFly');
+    const btnReset = document.getElementById('btnReset');
+
+    btnHead.onclick = () => { state.headlights = !state.headlights; setBtn(btnHead, state.headlights); };
+    btnBrake.onclick = () => { state.brake = !state.brake; setBtn(btnBrake, state.brake); };
+    btnL.onclick = () => {
+      state.turnL = !state.turnL;
+      if (state.turnL) state.turnR = false;
+      setBtn(btnL, state.turnL); setBtn(btnR, state.turnR);
+    };
+    btnR.onclick = () => {
+      state.turnR = !state.turnR;
+      if (state.turnR) state.turnL = false;
+      setBtn(btnR, state.turnR); setBtn(btnL, state.turnL);
+    };
+    btnThrust.onclick = () => { state.thrust = !state.thrust; setBtn(btnThrust, state.thrust); };
+    btnFly.onclick = () => {
+      state.fly = !state.fly;
+      if (state.fly) { state.thrust = true; setBtn(btnThrust, true); }
+      setBtn(btnFly, state.fly);
+    };
+    btnReset.onclick = () => {
+      Object.assign(state, {
+        headlights: false, brake: false, turnL: false, turnR: false,
+        thrust: false, fly: false, steer: 0, steerSmooth: 0,
+        speed: 0, yaw: 0, bank: 0, height: 0
+      });
+      car.position.set(0, 0, 0);
+      car.rotation.set(0, 0, 0);
+      [btnHead, btnBrake, btnL, btnR, btnThrust, btnFly].forEach(b => setBtn(b, false));
+    };
+
+    // input
+    const keys = {};
+    addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+    addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+    let dragging = false, lastX = 0;
+    canvas.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener('pointerup', () => { dragging = false; state.steer *= 0.3; });
+    canvas.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      lastX = e.clientX;
+      state.steer = THREE.MathUtils.clamp(state.steer + dx * 0.004, -1, 1);
+    });
+
+    function setEmissive(mesh, intensity) {
+      mesh.userData.mat.emissiveIntensity = intensity;
+    }
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      state.blink += dt;
+
+      // keyboard
+      if (keys['arrowleft'] || keys['a']) state.steer = Math.max(state.steer - 1.8 * dt, -1);
+      else if (keys['arrowright'] || keys['d']) state.steer = Math.min(state.steer + 1.8 * dt, 1);
+      else if (!dragging) state.steer *= Math.pow(0.08, dt); // return to center slowly
+
+      if (keys['arrowup'] || keys['w']) state.speed = Math.min(state.speed + 4.5 * dt, 8);
+      if (keys['arrowdown'] || keys['s'] || state.brake) {
+        // 減速／慣性：煞車時慢啲收速度
+        state.speed = Math.max(state.speed - (state.brake ? 7 : 3.5) * dt, -2);
+      } else {
+        // 自然減訓
+        state.speed *= Math.pow(0.35, dt);
+        if (Math.abs(state.speed) < 0.02) state.speed = 0;
+      }
+
+      // smooth steer then bank (慢斜)
+      state.steerSmooth = THREE.MathUtils.damp(state.steerSmooth, state.steer, 4.5, dt);
+      const targetBank = -state.steerSmooth * 0.28;
+      state.bank = THREE.MathUtils.damp(state.bank, targetBank, 3.2, dt);
+      state.yaw += -state.steerSmooth * state.speed * 0.35 * dt;
+
+      const targetH = state.fly ? 1.4 : 0;
+      state.height = THREE.MathUtils.damp(state.height, targetH, 2.2, dt);
+
+      car.rotation.y = state.yaw;
+      car.rotation.z = state.bank;
+      car.rotation.x = state.fly ? -0.06 : THREE.MathUtils.damp(car.rotation.x, state.speed * 0.01, 3, dt);
+      car.position.y = state.height;
+
+      const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
+      car.position.addScaledVector(forward, state.speed * dt);
+
+      // lights
+      const headI = state.headlights ? 3.2 : 0.05;
+      setEmissive(headL, headI);
+      setEmissive(headR, headI);
+      spotL.intensity = state.headlights ? 2.8 : 0;
+      spotR.intensity = state.headlights ? 2.8 : 0;
+
+      const tailBase = state.headlights ? 0.8 : 0.25;
+      const brakeI = state.brake ? 4.5 : tailBase;
+      setEmissive(tailBar, brakeI * 0.85);
+      setEmissive(brakeL, brakeI);
+      setEmissive(brakeR, brakeI);
+
+      const blinkOn = (state.blink % 0.7) < 0.35;
+      setEmissive(turnFL, state.turnL && blinkOn ? 3.5 : 0);
+      setEmissive(turnRL, state.turnL && blinkOn ? 3.5 : 0);
+      setEmissive(turnFR, state.turnR && blinkOn ? 3.5 : 0);
+      setEmissive(turnRR, state.turnR && blinkOn ? 3.5 : 0);
+
+      const thrustOn = state.thrust || state.fly;
+      const pulse = 0.75 + 0.25 * Math.sin(state.blink * 18);
+      thrusters.forEach(({ glow, plume, pLight }) => {
+        glow.material.opacity = thrustOn ? 0.85 * pulse : 0;
+        plume.material.opacity = thrustOn ? 0.45 * pulse : 0;
+        plume.scale.y = thrustOn ? 0.9 + 0.35 * pulse : 0.2;
+        pLight.intensity = thrustOn ? 2.2 * pulse : 0;
+      });
+
+      // camera follow
+      const camTarget = car.position.clone().add(new THREE.Vector3(0, 1.6 + state.height * 0.2, -5.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw));
+      camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+      camera.lookAt(car.position.x, car.position.y + 0.7, car.position.z);
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>

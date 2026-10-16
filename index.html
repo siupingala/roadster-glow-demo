@@ -3,15 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>Roadster Glow Demo</title>
+  <title>Roadster Glow Demo · Camera</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; font-family: system-ui, -apple-system, sans-serif; color: #eee; }
-    #c { display: block; width: 100%; height: 100%; touch-action: none; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: system-ui, -apple-system, sans-serif; color: #eee; }
+    #c { display: block; width: 100%; height: 100%; touch-action: none; position: relative; z-index: 1; }
+    #cam {
+      position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      z-index: 0; background: #050508; transform: none;
+    }
+    #cam.mirror { transform: scaleX(-1); }
     .hud {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
       padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
-      background: linear-gradient(transparent, rgba(0,0,0,.72));
+      background: linear-gradient(transparent, rgba(0,0,0,.75));
       display: flex; flex-direction: column; gap: 10px;
     }
     .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
@@ -37,39 +42,74 @@
       box-shadow: 0 0 18px rgba(80, 180, 255, .45);
       background: rgba(10, 40, 70, .92);
     }
-    .tip {
-      text-align: center; font-size: 11px; opacity: .65; line-height: 1.4;
+    button.cam.on {
+      border-color: rgba(120, 255, 180, .9);
+      box-shadow: 0 0 16px rgba(60, 220, 140, .35);
+      background: rgba(10, 50, 30, .92);
     }
+    .tip { text-align: center; font-size: 11px; opacity: .7; line-height: 1.4; }
     .badge {
       position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 12px;
       font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
-      opacity: .7; z-index: 10;
+      opacity: .75; z-index: 10; text-shadow: 0 1px 4px #000;
+    }
+    #gate {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.72); backdrop-filter: blur(6px);
+      padding: 24px;
+    }
+    #gate.hidden { display: none; }
+    #gate .card {
+      max-width: 320px; text-align: center;
+      background: rgba(22,22,28,.95); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px; padding: 22px 18px;
+    }
+    #gate h1 { font-size: 18px; margin-bottom: 8px; font-weight: 600; }
+    #gate p { font-size: 13px; opacity: .75; margin-bottom: 16px; line-height: 1.45; }
+    #gate button { width: 100%; padding: 12px; font-size: 15px; }
+    #status {
+      position: fixed; top: calc(32px + env(safe-area-inset-top)); left: 12px; right: 12px;
+      z-index: 10; font-size: 12px; opacity: .8; text-shadow: 0 1px 4px #000;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <div class="badge">Roadster Glow · demo</div>
+  <div class="badge">Roadster Glow · camera</div>
+  <div id="status">鏡頭未開</div>
+  <video id="cam" playsinline muted autoplay></video>
   <canvas id="c"></canvas>
+
+  <div id="gate">
+    <div class="card">
+      <h1>開鏡頭實景</h1>
+      <p>會用你部手機鏡頭做背景（預設後鏡）。需要你允許相機權限；請用 HTTPS／手機瀏覽器開。</p>
+      <button type="button" id="btnStart" class="cam">開啟後鏡頭</button>
+    </div>
+  </div>
+
   <div class="hud">
     <div class="row">
+      <button type="button" id="btnCam" class="cam" aria-pressed="false">開鏡頭</button>
+      <button type="button" id="btnFlip" class="cam" aria-pressed="false">前／後鏡</button>
       <button type="button" id="btnHead" aria-pressed="false">頭燈</button>
       <button type="button" id="btnBrake" class="brake" aria-pressed="false">煞車燈</button>
-      <button type="button" id="btnL" aria-pressed="false">← 轉燈</button>
-      <button type="button" id="btnR" aria-pressed="false">轉燈 →</button>
     </div>
     <div class="row">
+      <button type="button" id="btnL" aria-pressed="false">← 轉燈</button>
+      <button type="button" id="btnR" aria-pressed="false">轉燈 →</button>
       <button type="button" id="btnThrust" class="thrust" aria-pressed="false">Thruster</button>
       <button type="button" id="btnFly" class="thrust" aria-pressed="false">起飛</button>
       <button type="button" id="btnReset">重置</button>
     </div>
-    <p class="tip">拖曳／左右鍵轉彎（車身會慢斜）· 上下鍵加減 · 概念 demo，非官方 Tesla 產品</p>
+    <p class="tip">拖曳／左右鍵轉彎（慢斜）· 上下鍵加減 · 概念 demo，非官方 Tesla 產品</p>
   </div>
 
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
     }
   }
   </script>
@@ -77,85 +117,66 @@
     import * as THREE from 'three';
 
     const canvas = document.getElementById('c');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    const videoEl = document.getElementById('cam');
+    const statusEl = document.getElementById('status');
+    const gate = document.getElementById('gate');
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
+    renderer.setClearColor(0x000000, 0);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x07070c);
-    scene.fog = new THREE.FogExp2(0x07070c, 0.035);
+    // transparent so <video> shows through
+    scene.background = null;
 
     const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200);
     camera.position.set(0, 2.4, 7.2);
 
-    scene.add(new THREE.AmbientLight(0x8899bb, 0.35));
-    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
     key.position.set(4, 8, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 0.55);
+    const rim = new THREE.DirectionalLight(0x88aaff, 0.45);
     rim.position.set(-6, 3, -4);
     scene.add(rim);
 
-    // ground strip (HK-ish night asphalt vibe)
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 80),
-      new THREE.MeshStandardMaterial({ color: 0x15151c, roughness: 0.85, roughnessMap: null, metalness: 0.2 })
+    // subtle ground shadow disk so car feels grounded on camera feed
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1.6, 32),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    scene.add(ground);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.02;
+    scene.add(shadow);
 
-    const lane = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.6, 60),
-      new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.22 })
-    );
-    lane.rotation.x = -Math.PI / 2;
-    lane.position.set(0, 0.01, -8);
-    scene.add(lane);
-
-    // stylized Roadster group
     const car = new THREE.Group();
     scene.add(car);
 
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0xc8cdd4, metalness: 0.92, roughness: 0.22
-    });
-    const darkMat = new THREE.MeshStandardMaterial({
-      color: 0x111114, metalness: 0.7, roughness: 0.4
-    });
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x1a222c, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.75
-    });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc8cdd4, metalness: 0.92, roughness: 0.22 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x111114, metalness: 0.7, roughness: 0.4 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x1a222c, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.75 });
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.42, 4.2), bodyMat);
     body.position.y = 0.55;
-    body.scale.set(1, 1, 1);
     car.add(body);
-
     const nose = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.32, 1.1), bodyMat);
     nose.position.set(0, 0.48, 2.35);
     car.add(nose);
-
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.38, 1.6), glassMat);
     cabin.position.set(0, 0.88, 0.15);
     car.add(cabin);
-
     const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.06, 0.35), darkMat);
     spoiler.position.set(0, 0.95, -1.85);
     car.add(spoiler);
-
     const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 0.45), darkMat);
     diffuser.position.set(0, 0.28, -2.15);
     car.add(diffuser);
 
-    // wheels
     function wheel(x, z) {
-      const w = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.38, 0.38, 0.22, 24),
-        darkMat
-      );
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.22, 24), darkMat);
       w.rotation.z = Math.PI / 2;
       w.position.set(x, 0.38, z);
       car.add(w);
@@ -163,8 +184,7 @@
     wheel(-0.95, 1.35); wheel(0.95, 1.35);
     wheel(-0.95, -1.35); wheel(0.95, -1.35);
 
-    // lights
-    function makeLightMesh(w, h, d, color, intensity = 2) {
+    function makeLightMesh(w, h, d, color) {
       const mat = new THREE.MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0, metalness: 0.2, roughness: 0.4
       });
@@ -188,11 +208,9 @@
     spotR.target.position.set(0.55, 0.2, 8);
     car.add(spotR, spotR.target);
 
-    // continuous red rear bar
     const tailBar = makeLightMesh(1.7, 0.05, 0.06, 0xff2a2a);
     tailBar.position.set(0, 0.72, -2.12);
     car.add(tailBar);
-
     const brakeL = makeLightMesh(0.25, 0.12, 0.06, 0xff1a1a);
     brakeL.position.set(-0.7, 0.55, -2.12);
     const brakeR = makeLightMesh(0.25, 0.12, 0.06, 0xff1a1a);
@@ -209,25 +227,18 @@
     turnRR.position.set(0.95, 0.62, -2.05);
     car.add(turnFL, turnFR, turnRL, turnRR);
 
-    // thrusters
     const thrusters = [];
-    const thrustLights = [];
-    [-0.45, -0.15, 0.15, 0.45].forEach((x, i) => {
-      const nozzle = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.09, 0.12, 0.28, 16),
-        darkMat
-      );
+    [-0.45, -0.15, 0.15, 0.45].forEach((x) => {
+      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.28, 16), darkMat);
       nozzle.rotation.x = Math.PI / 2;
       nozzle.position.set(x, 0.32, -2.35);
       car.add(nozzle);
-
       const glow = new THREE.Mesh(
         new THREE.SphereGeometry(0.14, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0x9ad8ff, transparent: true, opacity: 0 })
       );
       glow.position.set(x, 0.32, -2.55);
       car.add(glow);
-
       const plume = new THREE.Mesh(
         new THREE.ConeGeometry(0.12, 0.9, 16, 1, true),
         new THREE.MeshBasicMaterial({ color: 0xb8e7ff, transparent: true, opacity: 0, side: THREE.DoubleSide })
@@ -235,37 +246,79 @@
       plume.rotation.x = Math.PI;
       plume.position.set(x, 0.32, -2.95);
       car.add(plume);
-
       const pLight = new THREE.PointLight(0x8ecfff, 0, 4, 2);
       pLight.position.set(x, 0.35, -2.6);
       car.add(pLight);
-
       thrusters.push({ glow, plume, pLight });
-      thrustLights.push(pLight);
     });
 
-    // state
     const state = {
-      headlights: false,
-      brake: false,
-      turnL: false,
-      turnR: false,
-      thrust: false,
-      fly: false,
-      steer: 0,       // -1..1 desired
-      steerSmooth: 0,
-      speed: 0,
-      yaw: 0,
-      bank: 0,
-      height: 0,
-      blink: 0,
+      headlights: false, brake: false, turnL: false, turnR: false,
+      thrust: false, fly: false,
+      steer: 0, steerSmooth: 0, speed: 0, yaw: 0, bank: 0, height: 0, blink: 0,
+      facingMode: 'environment', // rear
+      camOn: false,
     };
+
+    let mediaStream = null;
 
     function setBtn(el, on) {
       el.classList.toggle('on', on);
       el.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
 
+    function setStatus(text) { statusEl.textContent = text; }
+
+    async function startCamera(facingMode) {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('此瀏覽器唔支援相機');
+        throw new Error('no getUserMedia');
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        }
+      };
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e1) {
+        // fallback without ideal
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode }
+        });
+      }
+      videoEl.srcObject = mediaStream;
+      await videoEl.play();
+      state.facingMode = facingMode;
+      state.camOn = true;
+      videoEl.classList.toggle('mirror', facingMode === 'user');
+      setStatus(facingMode === 'user' ? '前鏡頭 · 實景' : '後鏡頭 · 實景');
+      setBtn(btnCam, true);
+      gate.classList.add('hidden');
+    }
+
+    function stopCamera() {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+      videoEl.srcObject = null;
+      state.camOn = false;
+      setBtn(btnCam, false);
+      setStatus('鏡頭已關（黑底）');
+    }
+
+    const btnStart = document.getElementById('btnStart');
+    const btnCam = document.getElementById('btnCam');
+    const btnFlip = document.getElementById('btnFlip');
     const btnHead = document.getElementById('btnHead');
     const btnBrake = document.getElementById('btnBrake');
     const btnL = document.getElementById('btnL');
@@ -273,6 +326,26 @@
     const btnThrust = document.getElementById('btnThrust');
     const btnFly = document.getElementById('btnFly');
     const btnReset = document.getElementById('btnReset');
+
+    btnStart.onclick = async () => {
+      try { await startCamera('environment'); }
+      catch (err) { setStatus('開鏡頭失敗：' + (err.message || err)); }
+    };
+    btnCam.onclick = async () => {
+      try {
+        if (state.camOn) stopCamera();
+        else await startCamera(state.facingMode || 'environment');
+      } catch (err) { setStatus('開鏡頭失敗：' + (err.message || err)); }
+    };
+    btnFlip.onclick = async () => {
+      const next = state.facingMode === 'environment' ? 'user' : 'environment';
+      try {
+        await startCamera(next);
+        setBtn(btnFlip, next === 'user');
+      } catch (err) {
+        setStatus('切換鏡頭失敗（部機可能只有一個鏡頭）');
+      }
+    };
 
     btnHead.onclick = () => { state.headlights = !state.headlights; setBtn(btnHead, state.headlights); };
     btnBrake.onclick = () => { state.brake = !state.brake; setBtn(btnBrake, state.brake); };
@@ -300,10 +373,10 @@
       });
       car.position.set(0, 0, 0);
       car.rotation.set(0, 0, 0);
+      shadow.position.set(0, 0.02, 0);
       [btnHead, btnBrake, btnL, btnR, btnThrust, btnFly].forEach(b => setBtn(b, false));
     };
 
-    // input
     const keys = {};
     addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
     addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -328,22 +401,18 @@
       const dt = Math.min(clock.getDelta(), 0.05);
       state.blink += dt;
 
-      // keyboard
       if (keys['arrowleft'] || keys['a']) state.steer = Math.max(state.steer - 1.8 * dt, -1);
       else if (keys['arrowright'] || keys['d']) state.steer = Math.min(state.steer + 1.8 * dt, 1);
-      else if (!dragging) state.steer *= Math.pow(0.08, dt); // return to center slowly
+      else if (!dragging) state.steer *= Math.pow(0.08, dt);
 
       if (keys['arrowup'] || keys['w']) state.speed = Math.min(state.speed + 4.5 * dt, 8);
       if (keys['arrowdown'] || keys['s'] || state.brake) {
-        // 減速／慣性：煞車時慢啲收速度
         state.speed = Math.max(state.speed - (state.brake ? 7 : 3.5) * dt, -2);
       } else {
-        // 自然減訓
         state.speed *= Math.pow(0.35, dt);
         if (Math.abs(state.speed) < 0.02) state.speed = 0;
       }
 
-      // smooth steer then bank (慢斜)
       state.steerSmooth = THREE.MathUtils.damp(state.steerSmooth, state.steer, 4.5, dt);
       const targetBank = -state.steerSmooth * 0.28;
       state.bank = THREE.MathUtils.damp(state.bank, targetBank, 3.2, dt);
@@ -359,8 +428,10 @@
 
       const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
       car.position.addScaledVector(forward, state.speed * dt);
+      shadow.position.x = car.position.x;
+      shadow.position.z = car.position.z;
+      shadow.material.opacity = state.fly ? 0.12 : 0.35;
 
-      // lights
       const headI = state.headlights ? 3.2 : 0.05;
       setEmissive(headL, headI);
       setEmissive(headR, headI);
@@ -388,8 +459,9 @@
         pLight.intensity = thrustOn ? 2.2 * pulse : 0;
       });
 
-      // camera follow
-      const camTarget = car.position.clone().add(new THREE.Vector3(0, 1.6 + state.height * 0.2, -5.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw));
+      const camTarget = car.position.clone().add(
+        new THREE.Vector3(0, 1.6 + state.height * 0.2, -5.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw)
+      );
       camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
       camera.lookAt(car.position.x, car.position.y + 0.7, car.position.z);
 
@@ -402,6 +474,8 @@
       camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
     });
+
+    addEventListener('pagehide', stopCamera);
   </script>
 </body>
 </html>
